@@ -7,7 +7,7 @@ import io
 
 # CSS: Ubah tampilan berdasarkan status login
 if 'login' in st.session_state and st.session_state.login:
-    # Kalau sudah login - warna halaman & sidebar
+    # Saat sudah login - warna halaman & sidebar
     st.markdown("""
         <style>
         .stApp {
@@ -50,7 +50,7 @@ if not st.session_state.login:
 
 else:
     st.sidebar.title("TomaTown🍅")
-    halaman = st.sidebar.radio("Pilih Halaman", ["Dashboard", "Penjualan", "Modal", "Laporan Laba/Rugi"])
+    halaman = st.sidebar.radio("Pilih Halaman", ["Persediaan Tomat", "Penjualan", "Modal", "Laporan Laba/Rugi", "Akhiri Periode Panen"])
     st.sidebar.markdown("---")
     if st.sidebar.button("Logout"):
         st.session_state.login = False
@@ -109,18 +109,18 @@ else:
         conn.commit()
         conn.close()
 
-# ----------------- Dashboard ----------------- #
-    if halaman == "Dashboard":
+# ----------------- Persediaan Tomat ----------------- #
+    if halaman == "Persediaan Tomat":
         st.title("Selamat Datang!")
         st.image("Logo TomaTown.png", width=500)
-        st.header("📦 Sistem Persediaan Tomat")
+        st.header("📦 Persediaan Tomat Saat Ini")
         data_stok = load_data("SELECT * FROM stok")
         st.dataframe(data_stok)
 
         with st.form("form_tambah"):
             kode = st.text_input("Kode")
             jenis = st.text_input("Jenis")
-            jumlah = st.number_input("Jumlah (Kg)", min_value=0.0)
+            jumlah = st.number_input("Jumlah (Kg)", min_value=0)
             harga = st.number_input("Harga (per Kg)", min_value=0.0)
             tambah = st.form_submit_button("Tambah")
 
@@ -136,26 +136,56 @@ else:
                 else:
                     st.warning("Kode dan Jenis wajib diisi.")
 
+        st.header("📦 Tambah Stok Tomat")
         with st.form("form_update"):
             kode_update = st.text_input("Kode Tomat")
-            jumlah_tambah = st.number_input("Jumlah Tambahan", min_value=0.0)
-            update = st.form_submit_button("Tambah Jumlah")
+            jumlah_tambah = st.number_input("Kuantitas", min_value=0)
+            update = st.form_submit_button("Tambah")
+
             if update:
-                existing = load_data("SELECT * FROM stok WHERE kode = ?", (kode_update,))
-                if not existing.empty:
-                    execute_query("UPDATE stok SET jumlah = jumlah + ? WHERE kode = ?", (jumlah_tambah, kode_update))
-                    st.success("Jumlah berhasil ditambahkan!")
-                    st.rerun()
+                if kode_update:
+                    existing = load_data("SELECT * FROM stok WHERE kode = ?", (kode_update,))
+                    if not existing.empty:
+                        execute_query(
+                            "UPDATE stok SET jumlah = jumlah + ? WHERE kode = ?",
+                            (jumlah_tambah, kode_update)
+                        )
+                        st.success("Stok berhasil ditambahkan!")
+                        st.rerun()
+                    else:
+                        st.error("Kode tidak ditemukan.")
                 else:
-                    st.error("Kode tidak ditemukan.")
-        
+                    st.warning("Silakan masukkan Kode Tomat.")
+
+        st.header("📦 Hapus Stok Tomat")
         with st.form("form_hapus"):
             kode_hapus = st.text_input("Kode Tomat")
+            jumlah_hapus = st.number_input("Kuantitas", min_value=0.0)
             hapus = st.form_submit_button("Hapus")
+
             if hapus:
-                execute_query("DELETE FROM stok WHERE kode = ?", (kode_hapus,))
-                st.success("Data berhasil dihapus!")
-                st.rerun()
+                if kode_hapus:
+                    existing = load_data("SELECT * FROM stok WHERE kode = ?", (kode_hapus,))
+                    if not existing.empty:
+                        stok_saat_ini = existing.iloc[0]["jumlah"]
+                        if jumlah_hapus >= stok_saat_ini:
+                            # Jika kuantitas yang dikurangkan lebih dari atau sama dengan stok, hapus seluruh baris
+                            execute_query("DELETE FROM stok WHERE kode = ?", (kode_hapus,))
+                            st.success("Stok habis. Pencatatan stok telah dihapus.")
+                            st.rerun()
+                        else:
+                            # Kurangi stok
+                            execute_query(
+                                "UPDATE stok SET jumlah = jumlah - ? WHERE kode = ?",
+                                (jumlah_hapus, kode_hapus)
+                            )
+                            st.success("Stok berhasil dikurangi!")
+                            st.rerun()
+                    else:
+                        st.error("Kode tidak ditemukan.")
+                else:
+                    st.warning("Silakan masukkan Kode Tomat.")
+
 
 # ----------------- Penjualan ----------------- #
     elif halaman == "Penjualan":
@@ -196,13 +226,16 @@ else:
             col2.write(row["kode"])
             col3.write(f"{row['jumlah terjual']} Kg")
             col4.write(f"Rp{row['total penjualan']:,.0f}")
-            if col5.button("🗑️", key=f"hapus_penjualan_{i}"):
+            if col5.button("🗑", key=f"hapus_penjualan_{i}"):
                 execute_query("DELETE FROM penjualan WHERE id = ?", (row["id"],))
                 st.rerun()
 
 # ----------------- Modal ----------------- #
     elif halaman == "Modal":
         st.header("💼 Manajemen Modal")
+        modal = load_data("SELECT * FROM modal")
+        st.dataframe(modal)
+
         with st.form("form_modal"):
             ket_modal = st.text_input("Keterangan Modal")
             kuantitas_modal = st.text_input("Kuantitas (misal: 2 kg)")
@@ -214,7 +247,7 @@ else:
                 if match:
                     jumlah_unit = float(match.group(1))
                     jumlah_modal = jumlah_unit * harga_modal
-            st.write(f"**Jumlah (Rp):** Rp {jumlah_modal:,.0f}")
+            st.write(f"*Jumlah (Rp):* Rp {jumlah_modal:,.0f}")
 
             tambah_modal = st.form_submit_button("Tambah Modal")
             if tambah_modal:
@@ -226,9 +259,6 @@ else:
                 else:
                     st.warning("Isi semua data terlebih dahulu.")
 
-        modal = load_data("SELECT * FROM modal")
-        st.dataframe(modal)
-
         st.write("### Hapus Pencatatan Modal")
         for i, row in modal.iterrows():
             col1, col2, col3, col4, col5 = st.columns([3, 2, 2, 2, 1])
@@ -236,7 +266,7 @@ else:
             col2.write(row["kuantitas"])
             col3.write(f"Rp{row['harga']:,.0f}")
             col4.write(f"Rp{row['jumlah']:,.0f}")
-            if col5.button("🗑️", key=f"hapus_modal_{i}"):
+            if col5.button("🗑", key=f"hapus_modal_{i}"):
                 execute_query("DELETE FROM modal WHERE id = ?", (row["id"],))
                 st.rerun()
 
@@ -251,22 +281,40 @@ else:
         st.metric("Total Modal", f"Rp{total_modal:,.0f}")
         st.metric("Total Penjualan", f"Rp{total_penjualan:,.0f}")
         st.metric("Laba / Rugi", f"Rp{laba:,.0f}", delta=laba)
+        
+# ----------------- Akhiri Periode Panen ----------------- #
+    elif halaman == "Akhiri Periode Panen":
+        st.header("⚠ Akhiri Periode Panen - Reset Semua Data")
 
-        st.subheader("⬇️ Ekspor Seluruh Data")
-        data_stok = load_data("SELECT * FROM stok")
-        modal = load_data("SELECT * FROM modal")
-        penjualan = load_data("SELECT * FROM penjualan")
+        st.warning("Semua data pencatatan (stok, modal, penjualan) akan dihapus PERMANEN setelah mengunduh backup.")
 
+        # Ambil data
+        df_stok = load_data("SELECT * FROM stok")
+        df_modal = load_data("SELECT * FROM modal")
+        df_penjualan = load_data("SELECT * FROM penjualan")
+
+        # Simpan ke file Excel (multi-sheet)
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
-            data_stok.to_excel(writer, sheet_name="Data Stok", index=False)
-            modal.to_excel(writer, sheet_name="Riwayat Modal", index=False)
-            penjualan.to_excel(writer, sheet_name="Riwayat Penjualan", index=False)
-            writer.close()
-            excel_data = output.getvalue()
+            df_stok.to_excel(writer, index=False, sheet_name="Stok")
+            df_modal.to_excel(writer, index=False, sheet_name="Modal")
+            df_penjualan.to_excel(writer, index=False, sheet_name="Penjualan")
+        output.seek(0)
 
+        # Tombol download
         st.download_button(
-            label="📀 Download Semua Data sebagai Excel",
-            data=excel_data,
-            file_name="semua_data_tomat.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+            label="📥 Unduh Data (Excel)",
+            data=output,
+            file_name=f"TomaTown_{datetime.now()}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+
+        # Konfirmasi dan Hapus
+        konfirmasi = st.checkbox("Saya sudah mengunduh backup data dan siap menghapus semua data.")
+        if konfirmasi:
+            if st.button("Akhiri Periode Panen dan Hapus Semua Data"):
+                execute_query("DELETE FROM stok")
+                execute_query("DELETE FROM modal")
+                execute_query("DELETE FROM penjualan")
+                st.success("Periode Panen saat ini berhasil diakhiri. Semua data telah dihapus.")
+                st.rerun()
